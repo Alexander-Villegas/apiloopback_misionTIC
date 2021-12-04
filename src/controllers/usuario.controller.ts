@@ -1,3 +1,4 @@
+import {authenticate} from '@loopback/authentication';
 import {service} from '@loopback/core';
 import {
   Count,
@@ -9,13 +10,15 @@ import {
 } from '@loopback/repository';
 import {
   del, get,
-  getModelSchemaRef, param, patch, post, put, requestBody,
+  getModelSchemaRef, HttpErrors, param, patch, post, put, requestBody,
   response
 } from '@loopback/rest';
 import axios from 'axios';
-import {Usuario} from '../models';
+import {Credenciales, Usuario} from '../models';
 import {UsuarioRepository} from '../repositories';
 import {AuthService} from '../services';
+
+@authenticate("admin")
 
 export class UsuarioController {
   constructor(
@@ -25,6 +28,7 @@ export class UsuarioController {
     public servicioAuth: AuthService
   ) { }
 
+  @authenticate.skip()
   @post('/usuarios')
   @response(200, {
     description: 'Usuario model instance',
@@ -49,7 +53,7 @@ export class UsuarioController {
     usuario.password = claveCifrada;
     let p = await this.usuarioRepository.create(usuario);
 
-    let destino = usuario.correo;
+    let destino = usuario.telefono;
     let asunto = 'Registro de usuario en plataforma';
     let contenido = `Hola, ${usuario.nombre} ${usuario.apellidos} su contraseña en el portal es: ${clave}`
     axios({
@@ -176,4 +180,36 @@ export class UsuarioController {
   async deleteById(@param.path.string('id') id: string): Promise<void> {
     await this.usuarioRepository.deleteById(id);
   }
+
+  //Servicio de login
+  @authenticate.skip()
+  @post('/login', {
+    responses: {
+      '200': {
+        description: 'Identificación de usuarios'
+      }
+    }
+  })
+  async login(
+    @requestBody() credenciales: Credenciales
+  ) {
+    let p = await this.servicioAuth.IdentificarPersona(credenciales.usuario, credenciales.password);
+    if (p) {
+      let token = this.servicioAuth.GenerarTokenJWT(p);
+
+      return {
+        status: "success",
+        data: {
+          nombre: p.nombre,
+          apellidos: p.apellidos,
+          correo: p.correo,
+          id: p.id
+        },
+        token: token
+      }
+    } else {
+      throw new HttpErrors[401]("Datos invalidos")
+    }
+  }
+
 }
